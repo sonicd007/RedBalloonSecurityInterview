@@ -1,0 +1,17 @@
+<html><head><meta charset="utf-8"/><style>h1 { margin: 5px 0 20px 0; }h2, h3 { margin: 10px 0 15px 0; }img { max-width: 100%; }pre { background-color: #f1f1f1; border-radius: 5px; padding: 10px; }pre > code { padding: 0; }table {border-spacing: 0; border-style: solid; border-width: 1px; border-collapse: collapse; margin-top: 0.5em;}th, td {padding: 2px 5px;}a { color: #FF9137; text-decoration: none; } pre, code { font-family: monospace; font-weight: normal;  }pre { display: block; background-color: #f1f1f1; white-space: pre-wrap } code { padding: 3px; overflow: auto; line-height: 1.45em; background-color: #f1f1f1; border-radius: 5px; color: #000000; } .code-comment { color: #75715E;} .code-string { color: #E6DB74;} .code-literal { color: #AE81FF;} .code-type { color: #66D9EF;} .code-builtin { color: #A6E22E;} .code-keyword { color: #F92672;} .code-other { color: #F92672;} body { font-family: Ubuntu; font-weight: normal; font-size: 11pt; } </style></head><body class="export"><h1>Verify checksums are being sent correctly</h1>
+<p>Checksums are a way of detecting errors within data payloads. The question is what stream of data are we getting these checksums for?</p>
+<p>Looking at the CLI parameters, I can see that packet ids are associated with binary files. The one given is cat.jpg which corresponds to packet id 0x42. This must be what the checksum data represents within this example packet.
+So right now, I know the following information some of which was given to us by the packet description:</p>
+<pre><code>The packet sequence number which represents the first CRC32 cycle of the udp packet checksums body
+The number of checksums in the UDP packet
+The size of the UDP packet which is defined as a DWORD = 4 bytes
+A 2 byte XOR key
+The CRC32 is encrypted with a XOR encryption.</code></pre>
+<p>So it seems the CRC32 payload is encrypted with a XOR encryption. To test this theory out, I XOR'd the checksums body with the 2 byte key, switching between the first and second byte since it's a repeating key. Doing this to the entire body leaves me with the decrypted data. I know the first four bytes are the CRC32 of the entire binary file. The bytes are <code>D2 68 38 CA</code> The other bytes in the checksums payload consist of the calculated CRC32 re-calculated upon the last iteration value. So now we've done the CRC32 calculation twice. First on the file itself to get iteration 0, then the value of the last iteration which results in the next checksum in the sample packet payload. i.e.</p>
+<pre><code>crc32(binary_file) &lt;- first iteration crc32
+crc32(binary_file, last_crc32) &lt;- second iteration crc32
+etc.</code></pre>
+<p>This is all there is to the checksum calculations. The hard part is the book keeping.</p>
+<h2>The book keeping</h2>
+<p>The entire idea here is to keep track of the last solved CRC32 that we have, keep track of any blocks we cannot solve yet because of needing the previous block solved, and managing to do all this in a multi process environment. This process took a while to do because of the attention to detail required in keeping track of what iteration cycle I'm on as well as storing all the relevant information. I ultimately ended up with two functions that desperately need to be refactored into one since they're extremely similar, however, I did not have enough time to clean up the code base and do and in depth writeup. I had 7 days to do this assignment and I utilized every single day to get as far as I did.</p>
+</body></html>

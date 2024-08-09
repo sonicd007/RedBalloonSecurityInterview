@@ -1,0 +1,80 @@
+<html><head><meta charset="utf-8"/><style>h1 { margin: 5px 0 20px 0; }h2, h3 { margin: 10px 0 15px 0; }img { max-width: 100%; }pre { background-color: #f1f1f1; border-radius: 5px; padding: 10px; }pre > code { padding: 0; }table {border-spacing: 0; border-style: solid; border-width: 1px; border-collapse: collapse; margin-top: 0.5em;}th, td {padding: 2px 5px;}a { color: #FF9137; text-decoration: none; } pre, code { font-family: monospace; font-weight: normal;  }pre { display: block; background-color: #f1f1f1; white-space: pre-wrap } code { padding: 3px; overflow: auto; line-height: 1.45em; background-color: #f1f1f1; border-radius: 5px; color: #000000; } .code-comment { color: #75715E;} .code-string { color: #E6DB74;} .code-literal { color: #AE81FF;} .code-type { color: #66D9EF;} .code-builtin { color: #A6E22E;} .code-keyword { color: #F92672;} .code-other { color: #F92672;} body { font-family: Ubuntu; font-weight: normal; font-size: 11pt; } </style></head><body class="export"><h1>Interview assessment writeup</h1>
+<h3>Introduction</h3>
+<p>For this interview assessment, the goal is to create a UDP server that can verify packet structure, digital signature, checksum validation, server multiple clients without blocking the main thread, and be able to run indefinitely while still servicing clients accurately and efficiently. The information we have to start with is the packet structure:</p>
+<pre><code>                ( 4 bytes ) Unique Packet ID for the checksummed binary)
+                ( 4 bytes ) Packet Sequence # (Total Checksums Processed)
+                ( 2 bytes ) Multibyte Repeating XOR Key | ( 2 bytes ) # of Checksums
+                ( Variable ) Repeating key XOR'd Cyclic Checksum CRC32 DWORDs (4 bytes)
+                ( 64 bytes ) RSA 512 SHA-256 Digital Signature (for above fields)</code></pre>
+<p>We are also given a key.bin file which we are told that it is the &quot;Raw binary bytes of RSA 512 bit public key and exponent. Used to verify signature of incoming packets.&quot;</p>
+<p>Lastly, in addition to the information we are given, we are also required to accept cli arguments and write logs under specific conditions.</p>
+<h2>Requirements</h2>
+<h3>CLI Arguments</h3>
+<p>Several command line arguments will be passed at runtime, which your submission must handle:</p>
+<p>• –keys: a dictionary of {packet_id: key_file_path} mappings – ex: --keys '{&quot;0x42&quot;: &quot;key.bin&quot;, &quot;0x1337&quot;: &quot;super_secret_key.bin&quot;}'
+• –binaries: a dictionary of {packet_id: binary_path} mappings – ex: --binaries '{&quot;0x42&quot;: &quot;cat.jpg&quot;, &quot;0x1337&quot;: &quot;kitten.jpg&quot;}'
+• -d: delay, (in seconds) for writing to log files – ex: -d '180'
+• -p: port, to receive packets on – ex: -p '1337'</p>
+<p>I'm using a Python library called argparse for accepting these arguments and providing help documentation as it's easy to setup and makes handling arguments a breeze.</p>
+<h3>Log file structure</h3>
+<p>For verification failures, the log format should follow the structure:
+0x42 (Packet ID - in hex)
+3703 (Packet sequence number)
+fd2bc562a95c4924d27f9f81de052fbab650f0c2989ee9f4e826244e7c1f0e66 (received hash)
+26a4fcaa2167342136272e1d2814b7c73ac995e1229fea8bffa536600cc57921 (expected hash)
+\n (trailing newline)</p>
+<p>For checksum failures, the log format should follow the structure:
+0x42 (Packet ID - in hex)
+1109 (Packet sequence number)
+1119 (Cyclic checksum iteration)
+2165e3dd (received crc32)
+2165e24d (expected crc32)
+\n (trailing newline)</p>
+<h3>Objectives</h3>
+<p>Using the included files, you should create a UDP server that handles the following criteria:
+1. Verify the structural integrity of the packet
+2. Verify the packet has a valid digital signature
+• Failing this, the server should write to a log file in the root directory of the project in a log file named
+verification_failures.log
+3. Verify checksums are being sent correctly
+• Failing this, the server should write to a log file in the root directory of the project in a log file named
+checksum_failures.log
+4. Introduce an artificial “delay” for writing to the log file, the duration will be passed as a command line
+argument (in seconds)</p>
+<h2>Initial thoughts</h2>
+<p>First off, this is a highly technical and detailed problem that's being asked. The requirements for having a non-blocking main thread indicates that I'll need to use multiple threads or multiple processes to handle packet validation/computing logic in order to keep the main thread responsive to clients connecting. Since writing multi-threaded, scalable, performant applications is complex in there of itself, I decided my first approach would be to create a blocking server until I'm able to flesh out all the details and get the basic functionality requirements met. This means I'll be tackling the &quot;features&quot; prior to addressing optimization/scalability/performance tasks. I have 7 days to complete this assessment, therefor I need to prioritize getting the main functionality working before I begin focusing on performance, scalability, and efficiency. Below is how I'm prioritizing the work needed to be done to complete this assessment. These can be though of as my milestones.</p>
+<ol>
+<li>Create a basic Python3 UDP server that can receive information
+a. Ensure CLI arguments can be passed through and accessed as needed
+b. Create an object (class) to represent our packet. This invovles reading the raw bytes and storing them in member variables for ease of use/access
+c. Dump out the packet information to verify I'm receiving the raw bytes correctly</li>
+<li>Ensure basic features are fleshed out and working
+a. Verify the structural integrity of the packet (do some basic checks such as packet size checks, length of byte checks etc.). Edge cases and more in depth checking will be done later
+b. Verify the packet has a valid digital signature
+• Failing this, the server should write to a log file in the root directory of the project in a log file named
+verification_failures.log</li>
+<li>Verify checksums are being sent correctly
+• Failing this, the server should write to a log file in the root directory of the project in a log file named
+checksum_failures.log</li>
+<li>Introduce an artificial “delay” for writing to the log file, the duration will be passed as a command line
+argument (in seconds).</li>
+<li>Modify server to have multiple clients simultaneously. This may mean using multiple threads or multiple processes since Python threads have an issue known as the Global Interpreter Lock so threads behave differently in Python than say C#.
+a. <s>I'm leaning towards multiple processes to utilize as many of the cpu cores as possible and redis to keep state information centralized, accessible from multiple processes, and the atomic execution of redis should help prevent any race conditions provided locks are implemented. Added                         bonus for being able to have an entirely different server storing the state. Additionally, redis keys have a TTL so we can utilize that for cacheing as well as for managing long life connections. This theoretically would solve the issue of remembering state since redis can be distributed as well.</s>I ended up using multiprocessing.Queue and multiple processes where applicable to handle this. A single process is responsible for writing logs and another process is responsible for verifying checksums. The main server process is the parent process that spawns the child processes and contains the Queue object to share with the children. More details will be included in the README.md file</li>
+<li>Clean up code, ensure 2a checks are fleshed out, ensure logs are accurate. Did not have enough time to clean up the code</li>
+<li>Create unit tests where applicable. Did not have enough time to do this</li>
+</ol>
+<h2>What's the purpose of this?</h2>
+<p>As I read through this I didn't fully understand what was going on between the client and the server. It wasn't until I reached the CRC32 checksum calculation section that I thought to myself &quot;Wait a second, what data are we checking?&quot;. Reviewing the CLI flags and seeing the cat.jpg tip made me realize that the task is all about creating a server that can verify authenticity of udp packets to verify if the sender actually has the correct data for the binary file associated with the packet id. In other words, I'm coding a server that will act as a file integrity verification tool. Pretty cool!</p>
+<p>Another important note is that this is a Sequential Dependency meaning I cannot compute the correct CRC32 value on my end without knowing the multibyte XOR key used from the previous packets. I'll need to remember packets like these in order to compute them when the data becomes available.</p>
+<h2>Potential problems that need to be addressed</h2>
+<ol>
+<li>Files that are being verified should not be fully loaded into RAM. Large files can consume all of the RAM with the current implementation</li>
+<li>Any file writes that need to take place must be done in a dedicated &quot;writer&quot; process. This is how the log_process works. This is to ensure log files are written correctly in the multi-process environment and to not cause data corruption in the log files.</li>
+<li>I'm keeping track of everything in RAM at this time. A cacheing system should be introduced.</li>
+<li>Everything is taking place within this one application. This can be scaled with some tweaks/process offloading. It's a good start for a minimal viable product.</li>
+<li>The bookkeeping objects are pickled to disk which is to have some data persistence should the server close. Eventually this can cause out of memory issues or used up disk space if we never receive enough data to solve the CRCs. Having many different packetid's would introduce more RAM usage as well.</li>
+<li>The code needs to be cleaned up. There are lot of hardcoded indice string names being used that I would like to be in variables instead for easier maintenance in the future. Additionally there's repeated code that needs to be refactored to adhere to the DRY principle.</li>
+<li>Unit tests need to be added and there should be more index bound checks than there currently are.</li>
+<li>I tried to handle a graceful shutdown when the SIGTERM is sent but I didn't get to fully get rid of any stdout errors being shown. The data and resources should close and free but I ran out of time to circle back to this.</li>
+</ol>
+</body></html>
