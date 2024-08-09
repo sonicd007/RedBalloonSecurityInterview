@@ -82,4 +82,3 @@ line 379 in server.py is supposed to enable the multi processing to satisfy the 
 
 line 382 is what I used for local development to make it easier to debug and test. This works and gives the expected results. Unfortunately this is also synchronous and not multi process.
 
-For any issues or questions, please contact me at dhernanwork@protonmail.com
